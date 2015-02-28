@@ -31,11 +31,11 @@
 (defn get-request [config resource action]
   (-> config
       (merge (get-in (:requests config) [resource action]))
-      ((fn [m]
-         (assoc m :url (str (:protocol m) "://" (:host m) (:path m)))))
+      ((fn [{:keys [protocol host path] :as m}]
+         (assoc m :url (str protocol "://" host path))))
       (select-keys [:headers :url :method :body])))
 
-(defn run-load-test [resource action duration rate]
+(defn create-load-test-handler [resource action duration rate]
   (let [load-test-id (count @load-tests)
         response-channel (async/chan 1 (map #(assoc % :load-test-id load-test-id :time (System/currentTimeMillis))))
         request (get-request config resource action)]
@@ -48,7 +48,7 @@
     (swap! load-tests conj {:resource resource :action action :duration duration :rate rate :id load-test-id})
     (load-test/blast! request response-channel :duration duration :rate rate)))
 
-(defn load-tests-handler [request]
+(defn list-load-tests-handler [request]
   (httpkit/with-channel request channel
     (add-watch load-tests :new-load-tests
                (fn [_ _ old-state new-state]
@@ -67,11 +67,11 @@
       (httpkit/send! channel (json/write-str data-point)))))
 
 (compojure/defroutes all-routes
-  (compojure/GET "/load-tests" [] load-tests-handler)
-  (compojure/GET "/data-points" [] data-points-handler)
-  (compojure/POST "/trigger" [resource action duration rate]
-                  (run-load-test (keyword resource) (keyword action) (Integer/parseInt duration) (Integer/parseInt rate))
+  (compojure/GET "/load-tests" [] list-load-tests-handler)
+  (compojure/POST "/load-tests" [resource action duration rate]
+                  (create-load-test-handler (keyword resource) (keyword action) (Integer/parseInt duration) (Integer/parseInt rate))
                   "Success")
+  (compojure/GET "/data-points" [] data-points-handler)
   (route/not-found "<p>Page not found</p>"))
 
 (defonce server (atom nil))
