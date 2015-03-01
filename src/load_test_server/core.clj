@@ -10,10 +10,8 @@
             [clojure.set :as clj-set]
             [load-test.core :as load-test]))
 
-;; {:id "LT123" :resource "Creditors" :action "Create"}
+;; TODO: Replace with DB!
 (def load-tests (atom #{}))
-
-;; {:id "DP123" :load-test "LT123" :response-time 201 :status 201}}
 (def data-points (atom #{}))
 
 (def config
@@ -66,7 +64,18 @@
     (doseq [data-point @data-points]
       (httpkit/send! channel (json/write-str data-point)))))
 
+(defn handle-presets [request]
+  (-> {:resources (into {} (map (fn [[resource actions]]
+                                  {resource (keys actions)})
+                                (:requests config)))
+       :url (:host config)}
+      (json/write-str)
+      (ring-response/response)
+      (ring-response/header "Content-Type" "application/json")
+      (ring-response/header "Access-Control-Allow-Origin" "*")))
+
 (compojure/defroutes all-routes
+  (compojure/GET "/presets" [] handle-presets)
   (compojure/GET "/load-tests" [] list-load-tests-handler)
   (compojure/POST "/load-tests" [resource action duration rate]
                   (create-load-test-handler (keyword resource) (keyword action) (Integer/parseInt duration) (Integer/parseInt rate))
