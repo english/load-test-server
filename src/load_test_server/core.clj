@@ -11,8 +11,7 @@
             [load-test.core :as load-test]))
 
 ;; TODO: Replace with DB!
-(def load-tests (atom #{}))
-(def data-points (atom #{}))
+(def load-tests (atom {}))
 
 (def config
   {:headers {"Content-Type" "application/json"
@@ -40,29 +39,18 @@
     (async/go-loop
       []
       (when-some [response (async/<! response-channel)]
-        (swap! data-points conj response)
+        (swap! load-tests update-in [load-test-id :data-points] #(conj % response))
         (recur)))
 
-    (swap! load-tests conj {:resource resource :action action :duration duration :rate rate :id load-test-id})
+    (swap! load-tests assoc load-test-id {:resource resource :action action :duration duration :rate rate :id load-test-id :data-points #{}})
     (load-test/blast! request response-channel :duration duration :rate rate)))
 
 (defn list-load-tests-handler [request]
   (httpkit/with-channel request channel
     (add-watch load-tests :new-load-tests
                (fn [_ _ old-state new-state]
-                 (httpkit/send! channel (json/write-str (clj-set/difference new-state old-state)))))
-
-    (doseq [load-test @load-tests]
-      (httpkit/send! channel (json/write-str load-test)))))
-
-(defn data-points-handler [request]
-  (httpkit/with-channel request channel
-    (add-watch data-points :new-data-points
-               (fn [_ _ old-state new-state]
-                 (httpkit/send! channel (json/write-str (clj-set/difference new-state old-state)))))
-
-    (doseq [data-point @data-points]
-      (httpkit/send! channel (json/write-str data-point)))))
+                 (httpkit/send! channel (json/write-str new-state))))
+    (httpkit/send! channel (json/write-str @load-tests))))
 
 (defn handle-presets [request]
   (-> {:resources (into {} (map (fn [[resource actions]]
