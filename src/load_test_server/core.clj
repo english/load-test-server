@@ -34,7 +34,8 @@
 
 (defn create-load-test-handler [resource action duration rate]
   (let [load-test-id (count @load-tests)
-        response-channel (async/chan 1 (map #(assoc % :load-test-id load-test-id :time (System/currentTimeMillis))))
+        response-channel (async/chan 1 (comp (map #(assoc % :load-test-id load-test-id :time (System/currentTimeMillis)))
+                                             (map #(dissoc % :body))))
         request (get-request config resource action)]
     (async/go-loop
       []
@@ -45,11 +46,17 @@
     (swap! load-tests assoc load-test-id {:resource resource :action action :duration duration :rate rate :id load-test-id :data-points #{}})
     (load-test/blast! request response-channel :duration duration :rate rate)))
 
+(defn index-by [coll key-fn]
+  (into {} (map (juxt key-fn identity) coll)))
+
 (defn list-load-tests-handler [request]
   (httpkit/with-channel request channel
     (add-watch load-tests :new-load-tests
                (fn [_ _ old-state new-state]
-                 (httpkit/send! channel (json/write-str new-state))))
+                 (let [load-test-diff (index-by (clj-set/difference (set (vals new-state))
+                                                                    (set (vals old-state)))
+                                                :id)]
+                   (httpkit/send! channel (json/write-str load-test-diff)))))
     (httpkit/send! channel (json/write-str @load-tests))))
 
 (defn handle-presets [request]
@@ -68,7 +75,6 @@
   (compojure/POST "/load-tests" [resource action duration rate]
                   (create-load-test-handler (keyword resource) (keyword action) (Integer/parseInt duration) (Integer/parseInt rate))
                   "Success")
-  (compojure/GET "/data-points" [] data-points-handler)
   (route/not-found "<p>Page not found</p>"))
 
 (defonce server (atom nil))
