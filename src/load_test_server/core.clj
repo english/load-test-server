@@ -32,11 +32,12 @@
          (assoc m :url (str protocol "://" host path))))
       (select-keys [:headers :url :method :body])))
 
-(defn create-load-test-handler [resource action duration rate]
-  (let [load-test-id (count @load-tests)
+(defn create-load-test-handler [request]
+  (let [{:keys [resource action duration rate]} (json/read-str (slurp (:body request)) :key-fn keyword)
+        load-test-id (count @load-tests)
         response-channel (async/chan 1 (comp (map #(assoc % :load-test-id load-test-id :time (System/currentTimeMillis)))
                                              (map #(dissoc % :body))))
-        request (get-request config resource action)]
+        test-request (get-request config (keyword resource) (keyword action))]
     (async/go-loop
       []
       (when-some [response (async/<! response-channel)]
@@ -44,7 +45,10 @@
         (recur)))
 
     (swap! load-tests assoc load-test-id {:resource resource :action action :duration duration :rate rate :id load-test-id :data-points #{}})
-    (load-test/blast! request response-channel :duration duration :rate rate)))
+    (load-test/blast! test-request response-channel :duration duration :rate rate)
+    {:status 201
+     :headers {"Access-Control-Allow-Origin" "*"}
+     :body ""}))
 
 (defn index-by [coll key-fn]
   (into {} (map (juxt key-fn identity) coll)))
@@ -71,10 +75,13 @@
 
 (compojure/defroutes all-routes
   (compojure/GET "/presets" [] handle-presets)
+  (compojure/OPTIONS "/load-tests" [] {:status 200
+                                       :headers {"Access-Control-Allow-Origin" "*"
+                                                 "Access-Control-Allow-Methods" "*"
+                                                 "Access-Control-Allow-Headers" "Content-Type"}
+                                       :body ""})
   (compojure/GET "/load-tests" [] list-load-tests-handler)
-  (compojure/POST "/load-tests" [resource action duration rate]
-                  (create-load-test-handler (keyword resource) (keyword action) (Integer/parseInt duration) (Integer/parseInt rate))
-                  "Success")
+  (compojure/POST "/load-tests" [] create-load-test-handler)
   (route/not-found "<p>Page not found</p>"))
 
 (defonce server (atom nil))
