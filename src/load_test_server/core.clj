@@ -67,7 +67,9 @@
   (-> {:resources (into {} (map (fn [[resource actions]]
                                   {resource (keys actions)})
                                 (:requests config)))
-       :url (:host config)}
+       :url (:host config)
+       :duration 5
+       :rate 3}
       (json/write-str)
       (ring-response/response)
       (ring-response/header "Content-Type" "application/json")
