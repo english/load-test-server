@@ -39,7 +39,7 @@
                                              (map #(dissoc % :body))))
         test-request (get-request conf (keyword resource) (keyword action))]
     (async/go-loop
-      []
+     []
       (when-some [response (async/<! response-channel)]
         (swap! db update-in [load-test-id :data-points] #(conj % response))
         (recur)))
@@ -93,11 +93,10 @@
   (-> (handler/site #'all-routes)
       reload/wrap-reload
       (json-middleware/wrap-json-body {:keywords? true})
-      (json-middleware/wrap-json-response {:pretty true})
-      (run-server {:port 3000})))
+      (json-middleware/wrap-json-response {:pretty true})))
 
 (defn start-server []
-  (swap! server (fn [_] (app))))
+  (swap! server (fn [_] (run-server (app) {:port 3000}))))
 
 (defn kill-server []
   (@server))
