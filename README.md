@@ -45,6 +45,47 @@ Connection: Upgrade
 The above will receive all load tests and then every new version of a load test
 created.
 
+## Notes
+
+### Config ideas
+
+Store endpoints and payloads in a huge map, each specifying dependencies.
+```clojure
+(def foo
+  {:headers {"Content-Type"       "application/json"
+             "GoCardless-Version" "2014-11-03"
+             "Authorization"      (str "Basic " (System/getenv "GC_AUTH_TOKEN"))}
+   :protocol "https"
+   :host "api-staging.gocardless.com"
+   :requests {:creditors {:create {:path "/creditors"
+                                   :method :post
+                                   :body {:creditors {:postal_code   "N7 6JT"
+                                                      :name          "Jamie Testing"
+                                                      :city          "London"
+                                                      :country_code  "GB"
+                                                      :address_line1 "123 Jamie Street"}}}
+                          :index  {:path "/creditors"
+                                   :method :get}
+                          :show   {:path "/creditors/:id"
+                                   :method :get
+                                   :dependency {:resource     :creditors
+                                                :action       :create
+                                                :url-replace  :id
+                                                :extract-path [:creditors :id]}}}
+              :creditor-bank-accounts {:create {:path "/creditor-bank-accounts"
+                                                :method :post
+                                                :body {:creditor_bank_accounts {:account_number      "55779911"
+                                                                                :sort_code           "200000"
+                                                                                :country_code        "GB"
+                                                                                :account_holder_name "Nude Wines"
+                                                                                :set_as_defaul_payout_account true
+                                                                                :links {:creditor ":creditor_id"}}}
+                                                :dependency {:resource     :creditors
+                                                             :action       :create
+                                                             :body-path    [:links :creditor]
+                                                             :extract-path [:creditors :id]}}}}})
+```
+
 ## License
 
 Copyright © 2015 Jamie English
