@@ -2,6 +2,7 @@
   (:require [org.httpkit.server :as httpkit :refer :all]
             [ring.util.response :as ring-response]
             [ring.middleware.reload :as reload]
+            [ring.middleware.json :as json-middleware]
             [compojure.route :as route]
             [compojure.handler :as handler]
             [compojure.core :as compojure]
@@ -14,9 +15,9 @@
 (def load-tests (atom {}))
 
 (def config
-  {:headers {"Content-Type" "application/json"
+  {:headers {"Content-Type"       "application/json"
              "GoCardless-Version" "2014-11-03"
-             "Authorization" (str "Basic " (System/getenv "GC_AUTH_TOKEN"))}
+             "Authorization"      (str "Basic " (System/getenv "GC_AUTH_TOKEN"))}
    :protocol "https"
    :host "api-staging.gocardless.com"
    :requests {:creditors {:create {:path "/creditors"
@@ -32,23 +33,26 @@
          (assoc m :url (str protocol "://" host path))))
       (select-keys [:headers :url :method :body])))
 
-(defn create-load-test-handler [request]
-  (let [{:keys [resource action duration rate]} (json/read-str (slurp (:body request)) :key-fn keyword)
-        load-test-id (count @load-tests)
+(defn run-load-test [{:keys [resource action duration rate]} conf db]
+  (let [load-test-id (count @db)
         response-channel (async/chan 1 (comp (map #(assoc % :load-test-id load-test-id :time (System/currentTimeMillis)))
                                              (map #(dissoc % :body))))
-        test-request (get-request config (keyword resource) (keyword action))]
+        test-request (get-request conf (keyword resource) (keyword action))]
     (async/go-loop
       []
       (when-some [response (async/<! response-channel)]
-        (swap! load-tests update-in [load-test-id :data-points] #(conj % response))
+        (swap! db update-in [load-test-id :data-points] #(conj % response))
         (recur)))
+    (swap! db assoc load-test-id {:resource resource :action action :duration duration :rate rate :id load-test-id :data-points #{}})
+    (println "about to blast " test-request " for " duration " seconds at " rate " requests per second")
+    (load-test/blast! test-request response-channel :duration duration :rate rate)))
 
-    (swap! load-tests assoc load-test-id {:resource resource :action action :duration duration :rate rate :id load-test-id :data-points #{}})
-    (load-test/blast! test-request response-channel :duration duration :rate rate)
-    {:status 201
-     :headers {"Access-Control-Allow-Origin" "*"}
-     :body ""}))
+(defn create-load-test-handler [request]
+  (run-load-test (select-keys (:body request) [:resource :action :duration :rate])
+                 config load-tests)
+  (-> (ring-response/response "")
+      (ring-response/status 201)
+      (ring-response/header "Access-Control-Allow-Origin" "*")))
 
 (defn index-by [coll key-fn]
   (into {} (map (juxt key-fn identity) coll)))
@@ -70,27 +74,26 @@
        :url (:host config)
        :duration 5
        :rate 3}
-      (json/write-str)
       (ring-response/response)
-      (ring-response/header "Content-Type" "application/json")
       (ring-response/header "Access-Control-Allow-Origin" "*")))
 
 (compojure/defroutes all-routes
-  (compojure/GET "/presets" [] handle-presets)
+  (compojure/GET     "/presets"    [] handle-presets)
   (compojure/OPTIONS "/load-tests" [] {:status 200
                                        :headers {"Access-Control-Allow-Origin" "*"
                                                  "Access-Control-Allow-Methods" "*"
                                                  "Access-Control-Allow-Headers" "Content-Type"}
                                        :body ""})
-  (compojure/GET "/load-tests" [] list-load-tests-handler)
-  (compojure/POST "/load-tests" [] create-load-test-handler)
-  (route/not-found "<p>Page not found</p>"))
+  (compojure/GET  "/load-tests" [] list-load-tests-handler)
+  (compojure/POST "/load-tests" [] create-load-test-handler))
 
 (defonce server (atom nil))
 
 (defn app []
   (-> (handler/site #'all-routes)
       reload/wrap-reload
+      (json-middleware/wrap-json-body {:keywords? true})
+      (json-middleware/wrap-json-response {:pretty true})
       (run-server {:port 3000})))
 
 (defn start-server []

@@ -8,6 +8,7 @@
                  [compojure "1.1.8"]
                  [ring "1.3.1"]
                  [ring/ring-devel "1.1.8"]
+                 [ring/ring-json  "0.3.1"]
                  [cheshire "5.2.0"]
                  [org.clojure/core.async "0.1.346.0-17112a-alpha"]
                  [load-test "0.1.0-SNAPSHOT"]])
