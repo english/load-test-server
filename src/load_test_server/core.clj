@@ -33,7 +33,7 @@
          (assoc m :url (str protocol "://" host path))))
       (select-keys [:headers :url :method :body])))
 
-(defn run-load-test [{:keys [resource action duration rate]} conf db]
+(defn run-load-test [{:keys [resource action duration rate]} conf db blast-fn]
   (let [load-test-id (count @db)
         response-channel (async/chan 1 (comp (map #(assoc % :load-test-id load-test-id :time (System/currentTimeMillis)))
                                              (map #(dissoc % :body))))
@@ -44,12 +44,11 @@
         (swap! db update-in [load-test-id :data-points] #(conj % response))
         (recur)))
     (swap! db assoc load-test-id {:resource resource :action action :duration duration :rate rate :id load-test-id :data-points #{}})
-    (println "about to blast " test-request " for " duration " seconds at " rate " requests per second")
-    (load-test/blast! test-request response-channel :duration duration :rate rate)))
+    (blast-fn test-request response-channel :duration duration :rate rate)))
 
 (defn create-load-test-handler [request]
   (run-load-test (select-keys (:body request) [:resource :action :duration :rate])
-                 config load-tests)
+                 config load-tests load-test/blast!)
   (-> (ring-response/response "")
       (ring-response/status 201)
       (ring-response/header "Access-Control-Allow-Origin" "*")))
@@ -67,7 +66,7 @@
                    (httpkit/send! channel (json/write-str load-test-diff)))))
     (httpkit/send! channel (json/write-str @load-tests))))
 
-(defn handle-presets [request]
+(defn handle-presets [config]
   (-> {:resources (into {} (map (fn [[resource actions]]
                                   {resource (keys actions)})
                                 (:requests config)))
@@ -78,7 +77,7 @@
       (ring-response/header "Access-Control-Allow-Origin" "*")))
 
 (compojure/defroutes all-routes
-  (compojure/GET     "/presets"    [] handle-presets)
+  (compojure/GET     "/presets"    [] (handle-presets config))
   (compojure/OPTIONS "/load-tests" [] {:status 200
                                        :headers {"Access-Control-Allow-Origin" "*"
                                                  "Access-Control-Allow-Methods" "*"
@@ -89,14 +88,14 @@
 
 (defonce server (atom nil))
 
-(defn app []
+(def app
   (-> (handler/site #'all-routes)
       reload/wrap-reload
       (json-middleware/wrap-json-body {:keywords? true})
       (json-middleware/wrap-json-response {:pretty true})))
 
 (defn start-server []
-  (swap! server (fn [_] (run-server (app) {:port 3000}))))
+  (swap! server (fn [_] (run-server app {:port 3000}))))
 
 (defn kill-server []
   (@server))
