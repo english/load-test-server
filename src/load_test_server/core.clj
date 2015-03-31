@@ -22,7 +22,11 @@
    :host "api-staging.gocardless.com"
    :requests {:creditors {:create {:path "/creditors"
                                    :method :post
-                                   :body "{\"creditors\":{\"postal_code\":\"N7 6JT\",\"name\":\"Jamie Testing\",\"city\":\"London\",\"country_code\":\"GB\",\"address_line1\":\"123 Jamie Street\"}}"}
+                                   :body {:creditors {:postal_code "N7 6JT"
+                                                      :name "Jamie Testing"
+                                                      :city "London"
+                                                      :country_code "GB"
+                                                      :address_line1 "123 Jamie Street"}}}
                           :index {:path "/creditors"
                                   :method :get}}}})
 
@@ -31,6 +35,8 @@
       (merge (get-in (:requests config) [resource action]))
       ((fn [{:keys [protocol host path] :as m}]
          (assoc m :url (str protocol "://" host path))))
+      ((fn [m]
+         (assoc m :body (json/write-str (:body m)))))
       (select-keys [:headers :url :method :body])))
 
 (defn run-load-test [{:keys [resource action duration rate]} conf db blast-fn]

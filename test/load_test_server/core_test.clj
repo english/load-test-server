@@ -10,7 +10,7 @@
    :host "api.example.com"
    :requests {:people {:create {:path "/people"
                                 :method :post
-                                :body "{\"people\":{\"name\":\"Jamie\",\"city\":\"London\"}}"}
+                                :body {:people {:name "Jamie" :city "London"}}}
                        :index {:path "/people"
                                :method :get}}}})
 
