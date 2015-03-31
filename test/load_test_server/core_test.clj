@@ -1,8 +1,7 @@
 (ns load-test-server.core-test
   (:require [clojure.test :refer :all]
             [load-test-server.core :as core]
-            [clojure.data.json :as json]
-            [ring.mock.request :as mock]))
+            [clojure.data.json :as json]))
 
 (def test-config
   {:headers {"Content-Type" "application/json"}
@@ -27,10 +26,10 @@
 
 (deftest run-load-test-test
   (testing "blaster gets called with correct args"
-    (let [request-body {:resource :people
-                        :action :create
-                        :duration 10
-                        :rate 4}
+    (let [options {:resource :people
+                   :action :create
+                   :duration 10
+                   :rate 4}
           config test-config
           db (atom {})
           blaster (fn [test-request response-channel & {:keys [duration rate]}]
@@ -41,4 +40,4 @@
                            test-request))
                     (is (= 10 duration))
                     (is (= 4 rate)))]
-      (core/run-load-test request-body config db blaster))))
+      (core/run-load-test options config db blaster))))

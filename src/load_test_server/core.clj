@@ -1,6 +1,5 @@
 (ns load-test-server.core
   (:require [org.httpkit.server :as httpkit :refer :all]
-            [ring.util.response :as ring-response]
             [ring.middleware.reload :as reload]
             [ring.middleware.json :as json-middleware]
             [compojure.route :as route]
@@ -55,9 +54,9 @@
 (defn create-load-test-handler [request]
   (run-load-test (select-keys (:body request) [:resource :action :duration :rate])
                  config load-tests load-test/blast!)
-  (-> (ring-response/response "")
-      (ring-response/status 201)
-      (ring-response/header "Access-Control-Allow-Origin" "*")))
+  {:status 201
+   :headers {"Access-Control-Allow-Origin" "*"}
+   :body ""})
 
 (defn index-by [coll key-fn]
   (into {} (map (juxt key-fn identity) coll)))
@@ -72,15 +71,21 @@
                    (httpkit/send! channel (json/write-str load-test-diff)))))
     (httpkit/send! channel (json/write-str @load-tests))))
 
+(defn resource-actions [config]
+  (into {} (map (fn [[resource actions]]
+                  {resource (keys actions)})
+                (:requests config))))
+
+(def default-duration 5)
+(def default-rate 3)
+
 (defn handle-presets [config]
-  (-> {:resources (into {} (map (fn [[resource actions]]
-                                  {resource (keys actions)})
-                                (:requests config)))
-       :url (:host config)
-       :duration 5
-       :rate 3}
-      (ring-response/response)
-      (ring-response/header "Access-Control-Allow-Origin" "*")))
+  {:status 200
+   :headers {"Access-Control-Allow-Origin" "*"}
+   :body {:resources (resource-actions config)
+          :url (:host config)
+          :duration default-duration
+          :rate default-rate}})
 
 (compojure/defroutes all-routes
   (compojure/GET     "/presets"    [] (handle-presets config))
